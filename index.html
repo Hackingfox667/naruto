@@ -1,163 +1,579 @@
+```html
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ninja VR Prototype</title>
+<title>Ninja VR Arena</title>
+
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
-<script>
-// Enemy AI: follows player
-AFRAME.registerComponent('enemy-ai', {
-  tick: function () {
-    const player = document.querySelector('#player');
-    if (!player) return;
-
-    const p = player.object3D.position;
-    const e = this.el.object3D.position;
-
-    const dx = p.x - e.x;
-    const dz = p.z - e.z;
-
-    e.x += dx * 0.0008;
-    e.z += dz * 0.0008;
-  }
-});
-</script>
-
 <style>
-body { margin: 0; overflow: hidden; }
+body { margin:0; overflow:hidden; }
+
+#hud{
+    position:fixed;
+    top:10px;
+    left:10px;
+    color:white;
+    font-family:Arial;
+    z-index:999;
+    text-shadow:2px 2px 4px black;
+}
 </style>
-</head>
-
-<body>
-
-<a-scene background="color: #87CEEB">
-
-  <!-- Sky -->
-  <a-sky color="#87CEEB"></a-sky>
-
-  <!-- Ground -->
-  <a-plane rotation="-90 0 0"
-           width="200"
-           height="200"
-           color="#55aa55">
-  </a-plane>
-
-  <!-- Player -->
-  <a-entity id="player" position="0 1.6 0">
-    <a-camera></a-camera>
-  </a-entity>
-
-  <!-- Chakra Energy Indicator -->
-  <a-sphere id="chakra"
-            position="0 2 -3"
-            radius="0.2"
-            color="#00aaff"
-            visible="false">
-  </a-sphere>
-
-  <!-- Enemies -->
-  <a-cylinder enemy-ai position="0 1 -10" radius="0.6" height="2" color="#222"></a-cylinder>
-  <a-cylinder enemy-ai position="4 1 -15" radius="0.6" height="2" color="#222"></a-cylinder>
-  <a-cylinder enemy-ai position="-4 1 -20" radius="0.6" height="2" color="#222"></a-cylinder>
-
-</a-scene>
 
 <script>
 
 let chakra = 100;
+let playerHealth = 100;
+let score = 0;
+let wave = 1;
 let isJumping = false;
 
-function useChidori() {
+function updateHUD(){
 
-  if (chakra < 25) return;
-
-  chakra -= 25;
-
-  const scene = document.querySelector('a-scene');
-  const player = document.querySelector('#player');
-
-  const chidori = document.createElement('a-sphere');
-
-  let z = player.object3D.position.z - 1;
-
-  chidori.setAttribute('radius', '0.35');
-  chidori.setAttribute('color', '#00ccff');
-  chidori.setAttribute('position', {
-    x: player.object3D.position.x,
-    y: player.object3D.position.y + 0.5,
-    z: z
-  });
-
-  scene.appendChild(chidori);
-
-  const attack = setInterval(() => {
-
-    z -= 0.9;
-
-    chidori.setAttribute('position', {
-      x: player.object3D.position.x,
-      y: player.object3D.position.y + 0.5,
-      z: z
-    });
-
-    document.querySelectorAll('[enemy-ai]').forEach(enemy => {
-
-      const ep = enemy.object3D.position;
-
-      if (
-        Math.abs(ep.z - z) < 1 &&
-        Math.abs(ep.x - player.object3D.position.x) < 1
-      ) {
-        enemy.setAttribute('color', '#00ffff');
-        enemy.object3D.position.y = -100; // "destroy"
-      }
-    });
-
-    if (z < -60) {
-      clearInterval(attack);
-      chidori.remove();
-    }
-
-  }, 16);
+    document.getElementById("hud").innerHTML = `
+        ❤️ Health: ${playerHealth}<br>
+        ⚡ Chakra: ${Math.floor(chakra)}<br>
+        🏆 Score: ${score}<br>
+        🌊 Wave: ${wave}
+    `;
 }
 
-window.addEventListener('keydown', e => {
+/* =========================
+   ENEMY AI
+========================= */
 
-  const player = document.querySelector('#player');
+AFRAME.registerComponent('enemy-ai', {
 
-  // A = Jump
-  if (e.key.toLowerCase() === 'a' && !isJumping) {
+    init() {
 
-    isJumping = true;
+        this.health = 100;
+        this.attackCooldown = 0;
+    },
 
-    let velocity = 0.22;
-    let y = player.object3D.position.y;
+    damage(amount = 25){
 
-    const jump = setInterval(() => {
+        this.health -= amount;
 
-      velocity -= 0.013;
-      y += velocity;
+        this.el.setAttribute(
+            "color",
+            this.health < 50 ? "#ff4444" : "#222"
+        );
 
-      if (y <= 1.6) {
-        y = 1.6;
-        clearInterval(jump);
-        isJumping = false;
-      }
+        if(this.health <= 0){
 
-      player.object3D.position.y = y;
+            score += 100;
 
-    }, 16);
-  }
+            this.el.remove();
 
-  // B = Chidori
-  if (e.key.toLowerCase() === 'b') {
-    useChidori();
-  }
+            updateHUD();
+            checkWave();
+        }
+    },
 
+    tick(time){
+
+        const player =
+            document.querySelector('#player');
+
+        if(!player) return;
+
+        const p = player.object3D.position;
+        const e = this.el.object3D.position;
+
+        const dx = p.x - e.x;
+        const dz = p.z - e.z;
+
+        const dist = Math.sqrt(dx*dx + dz*dz);
+
+        if(dist > 1.5){
+
+            e.x += (dx/dist)*0.03;
+            e.z += (dz/dist)*0.03;
+
+        } else {
+
+            if(time > this.attackCooldown){
+
+                playerHealth -= 5;
+                updateHUD();
+
+                this.attackCooldown =
+                    time + 1000;
+            }
+        }
+    }
 });
 
+/* =========================
+   KATANA
+========================= */
+
+AFRAME.registerComponent('katana-hit', {
+
+    tick(){
+
+        document
+        .querySelectorAll('[enemy-ai]')
+        .forEach(enemy=>{
+
+            const dist =
+                this.el.object3D.position.distanceTo(
+                    enemy.object3D.position
+                );
+
+            if(dist < 1){
+
+                enemy.components['enemy-ai']
+                .damage(1);
+            }
+        });
+    }
+});
+
+/* =========================
+   WALL RUN
+========================= */
+
+AFRAME.registerComponent('wall-run',{
+
+    tick(){
+
+        const walls =
+            document.querySelectorAll('.wall');
+
+        walls.forEach(wall=>{
+
+            const dist =
+                this.el.object3D.position.distanceTo(
+                    wall.object3D.position
+                );
+
+            if(dist < 2){
+
+                this.el.object3D.position.y += 0.03;
+            }
+        });
+    }
+});
+
+/* =========================
+   TREE CLIMB
+========================= */
+
+AFRAME.registerComponent('tree-climb',{
+
+    tick(){
+
+        const trees =
+            document.querySelectorAll('.tree');
+
+        trees.forEach(tree=>{
+
+            const dist =
+                this.el.object3D.position.distanceTo(
+                    tree.object3D.position
+                );
+
+            if(dist < 1.5){
+
+                this.el.object3D.position.y += 0.03;
+            }
+        });
+    }
+});
+
+/* =========================
+   SHADOW CLONES
+========================= */
+
+function spawnShadowClones(){
+
+    const scene =
+        document.querySelector('a-scene');
+
+    const player =
+        document.querySelector('#player');
+
+    for(let i=0;i<4;i++){
+
+        const clone =
+            document.createElement('a-cylinder');
+
+        clone.setAttribute(
+            'position',
+            `${player.object3D.position.x +
+              (Math.random()*6-3)}
+             1
+             ${player.object3D.position.z +
+              (Math.random()*6-3)}`
+        );
+
+        clone.setAttribute('radius',0.4);
+        clone.setAttribute('height',2);
+        clone.setAttribute('color','#ffaa00');
+
+        scene.appendChild(clone);
+
+        setTimeout(()=>clone.remove(),10000);
+    }
+}
+
+/* =========================
+   CHIDORI
+========================= */
+
+function useChidori(){
+
+    if(chakra < 25) return;
+
+    chakra -= 25;
+    updateHUD();
+
+    const scene =
+        document.querySelector('a-scene');
+
+    const player =
+        document.querySelector('#player');
+
+    const bolt =
+        document.createElement('a-sphere');
+
+    bolt.setAttribute('radius',0.3);
+    bolt.setAttribute('color','#00ffff');
+
+    bolt.setAttribute(
+        'material',
+        'emissive:#00ffff'
+    );
+
+    bolt.object3D.position.copy(
+        player.object3D.position
+    );
+
+    scene.appendChild(bolt);
+
+    let interval = setInterval(()=>{
+
+        bolt.object3D.position.z -= 0.8;
+
+        document
+        .querySelectorAll('[enemy-ai]')
+        .forEach(enemy=>{
+
+            const dist =
+                bolt.object3D.position.distanceTo(
+                    enemy.object3D.position
+                );
+
+            if(dist < 1.5){
+
+                enemy.components['enemy-ai']
+                .damage(50);
+            }
+        });
+
+        if(bolt.object3D.position.z < -100){
+
+            clearInterval(interval);
+            bolt.remove();
+        }
+
+    },16);
+}
+
+/* =========================
+   RASENGAN
+========================= */
+
+function useRasengan(){
+
+    if(chakra < 40) return;
+
+    chakra -= 40;
+    updateHUD();
+
+    const ball =
+      document.createElement('a-sphere');
+
+    ball.setAttribute(
+      'radius',
+      '0.6'
+    );
+
+    ball.setAttribute(
+      'color',
+      '#00ccff'
+    );
+
+    ball.setAttribute(
+      'animation',
+      'property: rotation; to:0 720 0; loop:true; dur:500'
+    );
+
+    const player =
+      document.querySelector('#player');
+
+    ball.object3D.position.copy(
+      player.object3D.position
+    );
+
+    document
+      .querySelector('a-scene')
+      .appendChild(ball);
+
+    setTimeout(()=>ball.remove(),5000);
+}
+
+/* =========================
+   WAVES
+========================= */
+
+function spawnEnemy(x,z){
+
+    const enemy =
+        document.createElement('a-cylinder');
+
+    enemy.setAttribute(
+        'position',
+        `${x} 1 ${z}`
+    );
+
+    enemy.setAttribute(
+        'radius',
+        '0.6'
+    );
+
+    enemy.setAttribute(
+        'height',
+        '2'
+    );
+
+    enemy.setAttribute(
+        'color',
+        '#222'
+    );
+
+    enemy.setAttribute(
+        'enemy-ai',
+        ''
+    );
+
+    document
+        .querySelector('a-scene')
+        .appendChild(enemy);
+}
+
+function startWave(){
+
+    for(let i=0;i<wave*3;i++){
+
+        spawnEnemy(
+            Math.random()*40-20,
+            -10-Math.random()*40
+        );
+    }
+}
+
+function checkWave(){
+
+    if(
+      document.querySelectorAll(
+      '[enemy-ai]'
+      ).length === 0
+    ){
+
+        wave++;
+
+        if(wave % 5 === 0){
+
+            spawnBoss();
+
+        } else {
+
+            startWave();
+        }
+
+        updateHUD();
+    }
+}
+
+/* =========================
+   BOSS
+========================= */
+
+function spawnBoss(){
+
+    const boss =
+        document.createElement('a-box');
+
+    boss.setAttribute(
+        'position',
+        '0 3 -50'
+    );
+
+    boss.setAttribute(
+        'width',
+        '5'
+    );
+
+    boss.setAttribute(
+        'height',
+        '5'
+    );
+
+    boss.setAttribute(
+        'depth',
+        '5'
+    );
+
+    boss.setAttribute(
+        'color',
+        '#660000'
+    );
+
+    document
+        .querySelector('a-scene')
+        .appendChild(boss);
+}
+
+/* =========================
+   INPUT
+========================= */
+
+window.addEventListener('keydown',e=>{
+
+    const player =
+        document.querySelector('#player');
+
+    switch(e.key.toLowerCase()){
+
+        case 'a':
+
+            if(!isJumping){
+
+                isJumping = true;
+
+                let v = 0.25;
+
+                const jump =
+                setInterval(()=>{
+
+                    v -= 0.015;
+
+                    player.object3D.position.y += v;
+
+                    if(
+                       player.object3D.position.y
+                       <= 1.6
+                    ){
+
+                        player.object3D.position.y
+                        = 1.6;
+
+                        clearInterval(jump);
+
+                        isJumping = false;
+                    }
+
+                },16);
+            }
+
+        break;
+
+        case 'b':
+            useChidori();
+        break;
+
+        case 'r':
+            useRasengan();
+        break;
+
+        case 'c':
+            spawnShadowClones();
+        break;
+    }
+});
+
+/* =========================
+   START
+========================= */
+
+window.onload = ()=>{
+
+    updateHUD();
+    startWave();
+
+    setInterval(()=>{
+
+        chakra =
+            Math.min(
+                100,
+                chakra + 1
+            );
+
+        updateHUD();
+
+    },500);
+};
+
 </script>
+</head>
+
+<body>
+
+<div id="hud"></div>
+
+<a-scene>
+
+<a-sky color="#87CEEB"></a-sky>
+
+<a-plane
+rotation="-90 0 0"
+width="300"
+height="300"
+color="#55aa55">
+</a-plane>
+
+<a-entity
+id="player"
+position="0 1.6 0"
+wall-run
+tree-climb>
+
+<a-camera></a-camera>
+
+<a-box
+id="katana"
+position="0.4 -0.2 -0.7"
+width="0.05"
+height="1.2"
+depth="0.05"
+color="silver"
+katana-hit>
+</a-box>
+
+</a-entity>
+
+<a-box
+class="wall"
+position="10 4 -20"
+width="1"
+height="8"
+depth="20"
+color="#888">
+</a-box>
+
+<a-cylinder
+class="tree"
+position="-10 5 -20"
+radius="1"
+height="10"
+color="#5b3a1e">
+</a-cylinder>
+
+</a-scene>
 
 </body>
 </html>
+```
