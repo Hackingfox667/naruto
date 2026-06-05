@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ninja VR Prototype</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+<script>
+// Enemy AI: follows player
+AFRAME.registerComponent('enemy-ai', {
+  tick: function () {
+    const player = document.querySelector('#player');
+    if (!player) return;
+
+    const p = player.object3D.position;
+    const e = this.el.object3D.position;
+
+    const dx = p.x - e.x;
+    const dz = p.z - e.z;
+
+    e.x += dx * 0.0008;
+    e.z += dz * 0.0008;
+  }
+});
+</script>
+
+<style>
+body { margin: 0; overflow: hidden; }
+</style>
+</head>
+
+<body>
+
+<a-scene background="color: #87CEEB">
+
+  <!-- Sky -->
+  <a-sky color="#87CEEB"></a-sky>
+
+  <!-- Ground -->
+  <a-plane rotation="-90 0 0"
+           width="200"
+           height="200"
+           color="#55aa55">
+  </a-plane>
+
+  <!-- Player -->
+  <a-entity id="player" position="0 1.6 0">
+    <a-camera></a-camera>
+  </a-entity>
+
+  <!-- Chakra Energy Indicator -->
+  <a-sphere id="chakra"
+            position="0 2 -3"
+            radius="0.2"
+            color="#00aaff"
+            visible="false">
+  </a-sphere>
+
+  <!-- Enemies -->
+  <a-cylinder enemy-ai position="0 1 -10" radius="0.6" height="2" color="#222"></a-cylinder>
+  <a-cylinder enemy-ai position="4 1 -15" radius="0.6" height="2" color="#222"></a-cylinder>
+  <a-cylinder enemy-ai position="-4 1 -20" radius="0.6" height="2" color="#222"></a-cylinder>
+
+</a-scene>
+
+<script>
+
+let chakra = 100;
+let isJumping = false;
+
+function useChidori() {
+
+  if (chakra < 25) return;
+
+  chakra -= 25;
+
+  const scene = document.querySelector('a-scene');
+  const player = document.querySelector('#player');
+
+  const chidori = document.createElement('a-sphere');
+
+  let z = player.object3D.position.z - 1;
+
+  chidori.setAttribute('radius', '0.35');
+  chidori.setAttribute('color', '#00ccff');
+  chidori.setAttribute('position', {
+    x: player.object3D.position.x,
+    y: player.object3D.position.y + 0.5,
+    z: z
+  });
+
+  scene.appendChild(chidori);
+
+  const attack = setInterval(() => {
+
+    z -= 0.9;
+
+    chidori.setAttribute('position', {
+      x: player.object3D.position.x,
+      y: player.object3D.position.y + 0.5,
+      z: z
+    });
+
+    document.querySelectorAll('[enemy-ai]').forEach(enemy => {
+
+      const ep = enemy.object3D.position;
+
+      if (
+        Math.abs(ep.z - z) < 1 &&
+        Math.abs(ep.x - player.object3D.position.x) < 1
+      ) {
+        enemy.setAttribute('color', '#00ffff');
+        enemy.object3D.position.y = -100; // "destroy"
+      }
+    });
+
+    if (z < -60) {
+      clearInterval(attack);
+      chidori.remove();
+    }
+
+  }, 16);
+}
+
+window.addEventListener('keydown', e => {
+
+  const player = document.querySelector('#player');
+
+  // A = Jump
+  if (e.key.toLowerCase() === 'a' && !isJumping) {
+
+    isJumping = true;
+
+    let velocity = 0.22;
+    let y = player.object3D.position.y;
+
+    const jump = setInterval(() => {
+
+      velocity -= 0.013;
+      y += velocity;
+
+      if (y <= 1.6) {
+        y = 1.6;
+        clearInterval(jump);
+        isJumping = false;
+      }
+
+      player.object3D.position.y = y;
+
+    }, 16);
+  }
+
+  // B = Chidori
+  if (e.key.toLowerCase() === 'b') {
+    useChidori();
+  }
+
+});
+
+</script>
+
+</body>
+</html>
